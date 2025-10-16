@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    /* 전체적인 스타일 */
+    body { font-family: sans-serif; margin: 20px; color: #333; }
+    h2 { border-bottom: 2px solid #eee; padding-bottom: 10px; }
+    button { padding: 8px 15px; border: none; background-color: #4285F4; color: white; border-radius: 4px; cursor: pointer; }
+    button:hover { background-color: #357ae8; }
+    input, select { padding: 8px; border-radius: 4px; border: 1px solid #ccc; }
+
+    /* 탭 스타일 */
+    .tab-container { display: flex; border-bottom: 1px solid #ccc; }
+    .tab-button { padding: 10px 20px; cursor: pointer; background: #f1f1f1; border: 1px solid #ccc; border-bottom: none; margin-bottom: -1px; }
+    .tab-button.active { background: white; border-top: 2px solid #4285F4; }
+    .tab-content { display: none; padding-top: 20px; }
+    .tab-content.active { display: block; }
+
+    /* 테이블 스타일 */
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+    th { background-color: #f8f8f8; cursor: pointer; }
+    th:hover { background-color: #f1f1f1; }
+
+    /* 컨트롤 영역 스타일 */
+    .controls { display: flex; gap: 10px; align-items: center; margin-bottom: 20px; flex-wrap: wrap; }
+    .search-area { margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+  <h1>체육대회 관리 페이지</h1>
+
+  <div class="tab-container">
+    <div class="tab-button active" onclick="openTab('vehicle')">차량 명단</div>
+    <div class="tab-button" onclick="openTab('team')">팀 명단</div>
+    <div class="tab-button" onclick="openTab('giftcard')">상품권 교환</div>
+    <div class="tab-button" onclick="openTab('raffle')">경품 추첨 대상</div>
+  </div>
+
+  <div id="vehicle" class="tab-content active">
+    <h2>차량 명단</h2>
+    <div class="controls">
+      <select id="vehicle-select" onchange="renderVehicleTable()"></select>
+      <button onclick="saveVehicleStatus()">저장</button>
+    </div>
+    <table id="vehicle-table">
+        <thead></thead>
+        <tbody></tbody>
+    </table>
+  </div>
+
+  <div id="team" class="tab-content">
+    <h2>팀 명단</h2>
+    <div class="search-area">
+      <input type="text" id="team-search-name" placeholder="이름으로 검색">
+      <button onclick="renderTeamTable()">조회</button>
+    </div>
+    <div class="controls" id="team-radios"></div>
+    <button onclick="saveTeamStatus()">참석 저장</button>
+    <table id="team-table">
+        <thead></thead>
+        <tbody></tbody>
+    </table>
+  </div>
+
+  <div id="giftcard" class="tab-content">
+    <h2>상품권 교환</h2>
+     <div class="search-area">
+      <input type="text" id="giftcard-search-name" placeholder="이름으로 검색">
+      <button onclick="renderGiftcardTable()">조회</button>
+    </div>
+    <button onclick="saveGiftcardStatus()">저장</button>
+    <table id="giftcard-table">
+        <thead></thead>
+        <tbody></tbody>
+    </table>
+  </div>
+
+  <div id="raffle" class="tab-content">
+    <h2>경품 추첨 대상</h2>
+    <div class="search-area">
+      <input type="text" id="raffle-search-name" placeholder="이름으로 검색">
+      <button onclick="renderRaffleTable()">조회</button>
+    </div>
+    <button onclick="saveRaffleStatus()">저장</button>
+    <table id="raffle-table">
+        <thead></thead>
+        <tbody></tbody>
+    </table>
+  </div>
+
+<script>
+  let originalData = [];
+  
+  // 데이터 인덱스 상수 (가독성을 위해)
+  const COL = { ID: 0, NAME: 1, POS: 2, DEPT: 3, TEAM: 4, VEHICLE: 5, PHONE: 6, BOARD: 7, ATTEND: 8, GIFTCARD: 9, RAFFLE: 10 };
+
+  // 페이지 로드 시 데이터 가져오기
+  window.addEventListener('load', () => {
+    google.script.run
+      .withSuccessHandler(data => {
+        originalData = data;
+        initVehicleTab();
+        initTeamTab();
+        renderGiftcardTable();
+        renderRaffleTable();
+      })
+      .getSheetData();
+  });
+
+  // 탭 기능 구현
+  function openTab(tabName) {
+    document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+    document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+    document.getElementById(tabName).classList.add('active');
+    event.currentTarget.classList.add('active');
+  }
+
+  // 데이터 정렬 함수
+  function sortData(data, keyIndex, asc = true) {
+      return data.sort((a, b) => {
+          if (a[keyIndex] < b[keyIndex]) return asc ? -1 : 1;
+          if (a[keyIndex] > b[keyIndex]) return asc ? 1 : -1;
+          return 0;
+      });
+  }
+
+  // 공통 테이블 렌더링 함수
+  function renderTable(tableId, headers, data, renderRowFunc) {
+      const table = document.getElementById(tableId);
+      const thead = table.querySelector('thead');
+      const tbody = table.querySelector('tbody');
+      
+      thead.innerHTML = '';
+      tbody.innerHTML = '';
+
+      const headerRow = document.createElement('tr');
+      headers.forEach(header => {
+          const th = document.createElement('th');
+          th.textContent = header.text;
+          th.onclick = () => {
+              const isAsc = !header.asc;
+              header.asc = isAsc;
+              const sortedData = sortData(data, header.keyIndex, isAsc);
+              renderTable(tableId, headers, sortedData, renderRowFunc);
+          };
+          headerRow.appendChild(th);
+      });
+      thead.appendChild(headerRow);
+
+      data.forEach(rowData => {
+          tbody.appendChild(renderRowFunc(rowData));
+      });
+  }
+
+  // --- 차량 명단 탭 ---
+  function initVehicleTab() {
+    const vehicles = [...new Set(originalData.map(row => row[COL.VEHICLE]))].filter(Boolean);
+    const select = document.getElementById('vehicle-select');
+    select.innerHTML = '<option value="">차량 선택</option>';
+    vehicles.forEach(v => {
+      const option = document.createElement('option');
+      option.value = v;
+      option.textContent = v;
+      select.appendChild(option);
+    });
+    renderVehicleTable();
+  }
+
+  function renderVehicleTable() {
+      const selectedVehicle = document.getElementById('vehicle-select').value;
+      const filteredData = selectedVehicle ? originalData.filter(row => row[COL.VEHICLE] === selectedVehicle) : [];
+      
+      const headers = [
+          { text: '탑승', keyIndex: COL.BOARD, asc: true },
+          { text: '차량', keyIndex: COL.VEHICLE, asc: true },
+          { text: '성명', keyIndex: COL.NAME, asc: true },
+          { text: '직급', keyIndex: COL.POS, asc: true },
+          { text: '부서', keyIndex: COL.DEPT, asc: true },
+          { text: '전화번호', keyIndex: COL.PHONE, asc: true }
+      ];
+
+      renderTable('vehicle-table', headers, filteredData, row => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+              <td><input type="checkbox" data-id="${row[COL.ID]}" ${row[COL.BOARD] === 'O' ? 'checked' : ''}></td>
+              <td>${row[COL.VEHICLE]}</td>
+              <td>${row[COL.NAME]}</td>
+              <td>${row[COL.POS]}</td>
+              <td>${row[COL.DEPT]}</td>
+              <td>${row[COL.PHONE]}</td>
+          `;
+          return tr;
+      });
+  }
+  
+  function saveVehicleStatus() {
+    const updates = [];
+    document.querySelectorAll('#vehicle-table tbody input[type="checkbox"]').forEach(chk => {
+        updates.push({ id: chk.dataset.id, type: 'boarding', value: chk.checked ? 'O' : '' });
+    });
+    google.script.run.withSuccessHandler(() => alert('저장되었습니다.')).updateAllStatus(updates);
+  }
+
+  // --- 팀 명단 탭 ---
+  function initTeamTab() {
+    const teams = [...new Set(originalData.map(row => row[COL.TEAM]))].filter(Boolean);
+    const radioContainer = document.getElementById('team-radios');
+    radioContainer.innerHTML = '<label><input type="radio" name="team" value="all" checked onchange="renderTeamTable()">전체</label>';
+    teams.forEach(t => {
+      const label = document.createElement('label');
+      label.innerHTML = `<input type="radio" name="team" value="${t}" onchange="renderTeamTable()">${t}</label>`;
+      radioContainer.appendChild(label);
+    });
+    renderTeamTable();
+  }
+
+  function renderTeamTable() {
+    const searchName = document.getElementById('team-search-name').value.toLowerCase();
+    const selectedTeam = document.querySelector('input[name="team"]:checked').value;
+
+    let filteredData = originalData;
+    if (searchName) {
+        filteredData = filteredData.filter(row => row[COL.NAME].toLowerCase().includes(searchName));
+    }
+    if (selectedTeam !== 'all') {
+        filteredData = filteredData.filter(row => row[COL.TEAM] === selectedTeam);
+    }
+    
+    const headers = [
+        { text: '참석', keyIndex: COL.ATTEND, asc: true },
+        { text: '성명', keyIndex: COL.NAME, asc: true },
+        { text: '직급', keyIndex: COL.POS, asc: true },
+        { text: '부서', keyIndex: COL.DEPT, asc: true },
+        { text: '팀', keyIndex: COL.TEAM, asc: true },
+    ];
+
+    renderTable('team-table', headers, filteredData, row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><input type="checkbox" data-id="${row[COL.ID]}" ${row[COL.ATTEND] === 'O' ? 'checked' : ''}></td>
+            <td>${row[COL.NAME]}</td>
+            <td>${row[COL.POS]}</td>
+            <td>${row[COL.DEPT]}</td>
+            <td>${row[COL.TEAM]}</td>
+        `;
+        return tr;
+    });
+  }
+
+  function saveTeamStatus() {
+    const updates = [];
+    document.querySelectorAll('#team-table tbody input[type="checkbox"]').forEach(chk => {
+        updates.push({ id: chk.dataset.id, type: 'attendance', value: chk.checked ? 'O' : '' });
+    });
+    google.script.run.withSuccessHandler(() => alert('저장되었습니다.')).updateAllStatus(updates);
+  }
+
+  // --- 상품권 교환 탭 ---
+  function renderGiftcardTable() {
+      const searchName = document.getElementById('giftcard-search-name').value.toLowerCase();
+      let attendees = originalData.filter(row => row[COL.ATTEND] === 'O');
+      if (searchName) {
+          attendees = attendees.filter(row => row[COL.NAME].toLowerCase().includes(searchName));
+      }
+
+      const headers = [
+          { text: '성명', keyIndex: COL.NAME, asc: true },
+          { text: '직급', keyIndex: COL.POS, asc: true },
+          { text: '부서', keyIndex: COL.DEPT, asc: true },
+          { text: '팀', keyIndex: COL.TEAM, asc: true },
+          { text: '상품권 교환', keyIndex: COL.GIFTCARD, asc: true },
+      ];
+
+      renderTable('giftcard-table', headers, attendees, row => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+              <td>${row[COL.NAME]}</td>
+              <td>${row[COL.POS]}</td>
+              <td>${row[COL.DEPT]}</td>
+              <td>${row[COL.TEAM]}</td>
+              <td><input type="text" data-id="${row[COL.ID]}" value="${row[COL.GIFTCARD] || ''}"></td>
+          `;
+          return tr;
+      });
+  }
+
+  function saveGiftcardStatus() {
+      const updates = [];
+      document.querySelectorAll('#giftcard-table tbody input[type="text"]').forEach(input => {
+          updates.push({ id: input.dataset.id, type: 'giftCard', value: input.value });
+      });
+      google.script.run.withSuccessHandler(() => alert('저장되었습니다.')).updateAllStatus(updates);
+  }
+
+  // --- 경품 추첨 대상 탭 ---
+  function renderRaffleTable() {
+      const searchName = document.getElementById('raffle-search-name').value.toLowerCase();
+      let attendees = originalData.filter(row => row[COL.ATTEND] === 'O');
+      if (searchName) {
+          attendees = attendees.filter(row => row[COL.NAME].toLowerCase().includes(searchName));
+      }
+      
+      const headers = [
+          { text: '대상', keyIndex: COL.RAFFLE, asc: true },
+          { text: '성명', keyIndex: COL.NAME, asc: true },
+          { text: '직급', keyIndex: COL.POS, asc: true },
+          { text: '부서', keyIndex: COL.DEPT, asc: true },
+          { text: '팀', keyIndex: COL.TEAM, asc: true },
+      ];
+
+      renderTable('raffle-table', headers, attendees, row => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+              <td><input type="checkbox" data-id="${row[COL.ID]}" ${row[COL.RAFFLE] === 'O' ? 'checked' : ''}></td>
+              <td>${row[COL.NAME]}</td>
+              <td>${row[COL.POS]}</td>
+              <td>${row[COL.DEPT]}</td>
+              <td>${row[COL.TEAM]}</td>
+          `;
+          return tr;
+      });
+  }
+
+  function saveRaffleStatus() {
+      const updates = [];
+      document.querySelectorAll('#raffle-table tbody input[type="checkbox"]').forEach(chk => {
+          updates.push({ id: chk.dataset.id, type: 'raffle', value: chk.checked ? 'O' : '' });
+      });
+      google.script.run.withSuccessHandler(() => alert('저장되었습니다.')).updateAllStatus(updates);
+  }
+
+</script>
+</body>
+</html>
